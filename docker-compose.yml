@@ -1,0 +1,102 @@
+# Orchestrates all three repositories of the project.
+#
+# This file lives in the pcshop-backend repo and builds the other two by
+# reference, so the three have to be cloned as sibling directories:
+#
+#   290926_persistant_jwt/
+#   |-- pcshop-backend/     <- you are here (compose lives in this repo)
+#   |-- pcshop-frontend/
+#   `-- pcshop-ldap/
+#
+# Before the first run:  cp .env.example .env  and set JWT_SECRET.
+
+name: pcshop
+
+services:
+  frontend:
+    build:
+      context: ../pcshop-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8081}:80"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: .
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-4000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:-abc123}@db:5432/pcshop
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env first}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1h}
+      - JWT_ISSUER=pcshop-api
+      - JWT_AUDIENCE=pcshop-frontend
+      - LDAP_URL=ldap://ldap:389
+      - LDAP_BASE_DN=dc=lab,dc=local
+      - LDAP_SVC_DN=cn=svc-pcshop,ou=Services,dc=lab,dc=local
+      - LDAP_SVC_PASSWORD=${LDAP_SVC_PASSWORD:-SvcPcshop-@2026}
+    depends_on:
+      db:
+        condition: service_healthy
+      ldap:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-abc123}
+      - POSTGRES_DB=pcshop
+    ports:
+      # 5434 on the host so it does not collide with the 5433 mapping used by
+      # the previous LDAP-integration project (and with any local PostgreSQL).
+      - "${DB_PORT:-5434}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Applied once, on the first boot of an empty volume.
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pcshop"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ldap:
+    build:
+      context: ../pcshop-ldap
+    restart: unless-stopped
+    environment:
+      - LDAP_ORGANISATION=Lab
+      - LDAP_DOMAIN=lab.local
+      - LDAP_BASE_DN=dc=lab,dc=local
+      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD:-LdapAdmin-@2026}
+    ports:
+      - "${LDAP_PORT:-1389}:389"
+    volumes:
+      - ldap-data:/var/lib/ldap
+      - ldap-config:/etc/ldap/slapd.d
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - ldapsearch -x -H ldap://127.0.0.1:389 -b "dc=lab,dc=local" -D "cn=admin,dc=lab,dc=local" -w "$$LDAP_ADMIN_PASSWORD" "(objectClass=*)" dn
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  db-data:
+  ldap-data:
+  ldap-config:
