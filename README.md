@@ -6,6 +6,12 @@ JWT issued by this service, presented as a Bearer token.
 This is the **second repo** of the deliverable. The compose file that boots the
 whole stack also lives here, because it has to reference the other two.
 
+| | |
+|---|---|
+| Stack | Node 22, Express 5, `pg`, `jsonwebtoken`, `ldapjs` |
+| Local URL | <http://localhost:4000> |
+| Sibling repos | [`pcshop-frontend`](../pcshop-frontend) · [`pcshop-ldap`](../pcshop-ldap) |
+
 ## The auth flow
 
 ```
