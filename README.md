@@ -23,7 +23,7 @@ Browser ──POST /api/auth/login {username,password}──▶ this service
                                                 (LDAP checks the password)
                                                         │
         ◀── { token, user } ────────────────────────────┘
-                (HS256, sub=handle, exp=1h)
+                (HS256, sub=handle, exp=5m)
 
 Browser ──GET /api/products  Authorization: Bearer <jwt>──▶ requireAuth
                                                               │
@@ -59,6 +59,22 @@ Error bodies are always `{ error, code }`; validation failures add `errors[]`.
 The `code` values are stable and safe to branch on: `NO_BEARER_TOKEN`,
 `TOKEN_EXPIRED`, `TOKEN_INVALID`, `USER_NOT_FOUND`, `BAD_PASSWORD`,
 `LDAP_UNAVAILABLE`, `VALIDATION_ERROR`, `INVALID_CATEGORY`, `NOT_FOUND`.
+
+Tokens are short lived (`JWT_EXPIRES_IN`, `5m` by default), so a lapsed one is
+an ordinary, expected outcome rather than a malfunction. A single `401` is all a
+client needs to recognise:
+
+- The server distinguishes the two ways a token can be unusable. `TOKEN_EXPIRED`
+  is a token this service minted, whose `exp` has passed, and the client's stored
+  session can simply be discarded and replaced. `TOKEN_INVALID` means the token is
+  not one this service can vouch for (wrong secret, bad signature, wrong
+  issuer/audience), which is a different and more serious signal.
+- The browser drops the session and returns to the login screen with the reason
+  it ended, on both counts: a request answered with `401 TOKEN_EXPIRED`, and a
+  click on a link after `exp` has passed, which issues no request and so can only
+  be caught by reading `exp` locally.
+- `401 TOKEN_EXPIRED` is deliberately *not* used for a failed login, so a wrong
+  password cannot be mistaken for an ended session.
 
 ## Run it
 
@@ -121,7 +137,7 @@ Invoke-RestMethod -Uri http://localhost:4000/api/products -Headers @{ Authorizat
 | Variable | Required | Default | Notes |
 |---|---|---|---|
 | `JWT_SECRET` | **yes** | — | ≥32 chars, non-placeholder. Boot fails otherwise |
-| `JWT_EXPIRES_IN` | no | `1h` | Anything `jsonwebtoken` accepts (`30m`, `2h`, `7d`) |
+| `JWT_EXPIRES_IN` | no | `5m` | Anything `jsonwebtoken` accepts (`30m`, `2h`, `7d`) |
 | `JWT_ISSUER` | no | `pcshop-api` | Verified on every request |
 | `JWT_AUDIENCE` | no | `pcshop-frontend` | Verified on every request |
 | `DATABASE_URL` | **yes** | local Postgres | |

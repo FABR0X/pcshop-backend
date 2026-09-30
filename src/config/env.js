@@ -27,7 +27,7 @@ const config = {
 
     jwt: {
         secret: required("JWT_SECRET"),
-        expiresIn: process.env.JWT_EXPIRES_IN || "1h",
+        expiresIn: process.env.JWT_EXPIRES_IN || "5m",
         issuer: process.env.JWT_ISSUER || "pcshop-api",
         audience: process.env.JWT_AUDIENCE || "pcshop-frontend",
     },
